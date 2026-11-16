@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Habit Rounds</title>
+<meta name="theme-color" content="#fbfcfe" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121a2b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Habit Rounds">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d3a6e'/%3E%3Cpath d='M18 33l9 9 19-20' stroke='%23fff' stroke-width='7' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Karla:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one narrow notebook column. Header (week + who) → tabs (My habits / The crew) → list → standings note. */
+:root {
+  --paper: #fbfcfe;
+  --grid: #e1e8f2;
+  --ink: #1d3a6e;
+  --pen: #2357b8;
+  --hi: #ffe27a;
+  --muted: #687896;
+  --danger: #b4322a;
+  --hand: "Caveat", "Segoe Print", "Bradley Hand", cursive;
+  --body: "Karla", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #121a2b; --grid: #1e2a42; --ink: #dbe5f7; --pen: #79a6ff; --hi: #6b5a12; --muted: #8f9cb8; --danger: #ff8f86; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --paper: #121a2b; --grid: #1e2a42; --ink: #dbe5f7; --pen: #79a6ff; --hi: #6b5a12; --muted: #8f9cb8; --danger: #ff8f86; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background-color: var(--paper); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.4;
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 22px 22px; }
+.wrap { max-width: 560px; margin: 0 auto; padding-block: 18px 72px;
+  padding-left: max(18px, env(safe-area-inset-left, 0px)); padding-right: max(18px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 14px; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: 0; padding: 0; }
+:focus-visible { outline: 2px solid var(--pen); outline-offset: 3px; border-radius: 4px; }
+.num { font-variant-numeric: tabular-nums; }
+.label { font-weight: 700; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+mark { background: linear-gradient(transparent 55%, var(--hi) 55%); color: inherit; padding: 0 3px; }
+
+/* header */
+.weekline { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wnav { display: flex; gap: 2px; }
+.wnav button { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); font-size: 18px; }
+.wnav button:hover:not(:disabled) { background: var(--grid); color: var(--ink); }
+.wnav button:disabled { opacity: .3; cursor: default; }
+.headline { font-family: var(--hand); font-weight: 700; font-size: clamp(38px, 11vw, 48px); line-height: 1; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
+.sub button { color: var(--pen); text-decoration: underline; font-weight: 600; }
+.who { display: flex; flex-wrap: wrap; gap: 4px 16px; font-family: var(--hand); font-size: 25px; }
+.who button { color: var(--muted); padding: 2px 0; }
+.who button[aria-pressed="true"] { color: var(--ink); text-decoration: underline wavy var(--pen) 1.5px; text-underline-offset: 6px; }
+.who.big { font-size: 34px; gap: 6px 22px; padding: 8px 0 4px; }
+.who.big button { color: var(--ink); }
+
+/* tabs */
+.tabs { display: flex; gap: 22px; border-bottom: 1.5px solid var(--grid); }
+.tabs button { padding: 10px 0 8px; font-weight: 700; font-size: 15px; color: var(--muted); border-bottom: 2.5px solid transparent; margin-bottom: -1.5px; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--ink); }
+.tabs .spacer { flex: 1; }
+.tabs .edit { font-size: 14px; font-weight: 600; color: var(--pen); }
+
+/* habit rows */
+.list { display: flex; flex-direction: column; }
+.h { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 2px 14px; align-items: center; padding: 12px 0; border-bottom: 1.5px dashed var(--grid); }
+.h.ro { grid-template-columns: minmax(0, 1fr); }
+.tick { width: 46px; height: 46px; border: 2.2px solid var(--ink); border-radius: 50%; display: grid; place-items: center; grid-row: span 2;
+  transform: rotate(-4deg); transition: background .15s, border-color .15s, transform .15s; }
+.tick svg { width: 22px; height: 22px; opacity: 0; }
+.tick.on { background: var(--pen); border-color: var(--pen); }
+.tick.on svg { opacity: 1; }
+.tick:active { transform: rotate(-4deg) scale(.92); }
+.tick:disabled { opacity: .3; cursor: default; }
+.n { font-weight: 700; font-size: 17px; overflow-wrap: anywhere; min-width: 0; }
+.meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; font-size: 13.5px; color: var(--muted); min-width: 0; }
+.dots { display: flex; gap: 3px; margin-left: -2px; }
+.dot { width: 34px; height: 38px; display: grid; place-items: center; }
+.dot i { width: 30px; height: 30px; border: 1.6px solid var(--ink); border-radius: 50%; display: grid; place-items: center;
+  font-style: normal; font-size: 12px; font-weight: 700; color: var(--muted); border-color: var(--muted); background: var(--paper); transition: background .15s; }
+.dot.on i { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.dot.today i { color: var(--ink); border-color: var(--ink); box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--pen); }
+.dot.today.on i { color: var(--paper); }
+.dot.future i { opacity: .45; }
+@media (max-width: 360px) { .dot { width: 30px; } .dot i { width: 27px; height: 27px; } .dots { gap: 1px; } }
+.dot:disabled { cursor: default; }
+.tick.plus { font-weight: 700; font-size: 17px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.count.over { color: var(--danger); font-weight: 700; }
+.lim-line { grid-column: 2; display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--muted); padding-top: 2px; }
+.lim-line b { color: var(--ink); }
+.lim-line button { color: var(--pen); font-weight: 600; text-decoration: underline; }
+.lim-line button:disabled { opacity: .35; cursor: default; text-decoration: none; }
+.dot.sel i { color: var(--ink); border-color: var(--ink); box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--pen); }
+.dot.sel.on i { color: var(--paper); }
+.dot.overday.on i { background: var(--danger); border-color: var(--danger); }
+.seg { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.seg button { border: 1.5px solid var(--ink); border-radius: 999px; padding: 6px 12px; font-size: 14px; font-weight: 600; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.nrow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.nrow .count { font-size: 13.5px; color: var(--muted); white-space: nowrap; }
+.count b { color: var(--ink); }
+.goal { color: var(--pen); font-weight: 700; }
+.edit-row { grid-column: 2; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 6px; font-size: 14px; }
+.h.ro .edit-row { grid-column: 1; }
+.step { display: inline-flex; align-items: center; gap: 6px; }
+.step button { width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--ink); font-weight: 700; font-size: 18px; line-height: 1; }
+.step button:disabled { opacity: .3; cursor: default; }
+.rm { color: var(--danger); font-weight: 600; text-decoration: underline; margin-left: auto; }
+
+/* add */
+.addbtn { align-self: flex-start; font-family: var(--hand); font-size: 25px; color: var(--pen); padding: 8px 0; }
+.addform { display: flex; flex-direction: column; gap: 10px; padding: 12px 0; border-bottom: 1.5px dashed var(--grid); }
+.addform input[type=text] { width: 100%; border: 0; border-bottom: 2px solid var(--ink); background: transparent; padding: 6px 2px; font-size: 18px; border-radius: 0; }
+.addform input[type=text]:focus { outline: none; border-color: var(--pen); }
+.addrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 14.5px; }
+.btn { background: var(--ink); color: var(--paper); border-radius: 999px; padding: 9px 18px; font-weight: 700; font-size: 15px; }
+.btn:disabled { opacity: .4; cursor: default; }
+.link { color: var(--muted); text-decoration: underline; font-size: 14.5px; }
+.copy { align-self: flex-start; border: 1.5px dashed var(--pen); color: var(--pen); border-radius: 10px; padding: 10px 14px; font-weight: 600; font-size: 14.5px; }
+.empty { font-family: var(--hand); font-size: 23px; color: var(--muted); padding: 10px 0; }
+.full { font-size: 13.5px; color: var(--muted); padding-top: 6px; }
+
+/* standings note */
+.note { background: var(--paper); border: 1.5px solid var(--ink); border-radius: 4px; padding: 12px 16px 14px; box-shadow: 4px 4px 0 var(--grid);
+  transform: rotate(-.6deg); margin-top: 10px; }
+.note .t { font-family: var(--hand); font-size: 27px; font-weight: 700; line-height: 1.1; display: flex; justify-content: space-between; align-items: baseline; }
+.note .t small { font-family: var(--body); font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+.st { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 5px 0; }
+.st .rk { font-family: var(--hand); font-size: 22px; color: var(--muted); }
+.st .nm { min-width: 0; }
+.st .nm div { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st .bar { height: 5px; background: var(--grid); border-radius: 3px; margin-top: 3px; overflow: hidden; }
+.st .bar i { display: block; height: 100%; background: var(--pen); }
+.st .pc { font-family: var(--hand); font-size: 26px; font-weight: 700; line-height: 1; text-align: right; }
+.st .pc small { display: block; font-family: var(--body); font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.st.me .nm div:first-child { color: var(--pen); }
+
+/* crew */
+.friend { display: flex; flex-direction: column; padding-top: 18px; }
+.friend-head { display: flex; align-items: baseline; gap: 12px; }
+.friend-head h3 { font-family: var(--hand); font-size: 32px; font-weight: 700; margin: 0; line-height: 1; }
+.friend-head .pcs { color: var(--muted); font-size: 14px; }
+.friend-head .rn { margin-left: auto; color: var(--muted); font-size: 13.5px; text-decoration: underline; }
+.rename { display: flex; gap: 10px; align-items: center; }
+.rename input { flex: 1; min-width: 0; border: 0; border-bottom: 2px solid var(--ink); background: transparent; font-family: var(--hand); font-size: 30px; padding: 0 2px; border-radius: 0; }
+.rename input:focus { outline: none; border-color: var(--pen); }
+
+.notice { font-size: 14px; padding: 10px 14px; border-radius: 6px; background: var(--paper); border: 1.5px dashed var(--muted); color: var(--muted); }
+.notice.err { border-color: var(--danger); color: var(--danger); }
+.rules { font-size: 13.5px; color: var(--muted); margin-top: 18px; }
+.rules b { color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="weekline">
+    <span class="label num" id="weekLabel">Habit Rounds</span>
+    <div class="wnav">
+      <button id="prevW" aria-label="Previous week">‹</button>
+      <button id="nextW" aria-label="Next week">›</button>
+    </div>
+  </div>
+  <div>
+    <h1 class="headline" id="headline">Habit Rounds</h1>
+    <div class="sub num" id="sub"></div>
+  </div>
+  <div class="who" id="who" role="group" aria-label="Who are you?"></div>
+  <div id="notice" class="notice" hidden></div>
+  <div id="main"></div>
+  <p class="rules"><b>How it works.</b> Each round runs Monday to Sunday. Everyone picks up to 5 habits and how many days a week to do each. Tap the circle when you've done a habit today, or tap a day (M T W T F S S) to fill in another one. A “count and stay under” habit, like drinks, has a +1 button instead: tap it each time, and it scores a point as long as your week stays at or under its max. Your score is the share of your targets you hit, and the highest score on Sunday night wins the round.</p>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { initializeFirestore, persistentLocalCache, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const app = initializeApp({
+  apiKey: "AIzaSyD7SByF_A6DLpKjBovID_b1f8oxBuKkppo",
+  authDomain: "habit-rounds-crew.firebaseapp.com",
+  projectId: "habit-rounds-crew",
+  storageBucket: "habit-rounds-crew.firebasestorage.app",
+  messagingSenderId: "391165130046",
+  appId: "1:391165130046:web:572fa9bfb7c50889a2686f",
+});
+let fs;
+try { fs = initializeFirestore(app, { localCache: persistentLocalCache() }); }
+catch { fs = initializeFirestore(app, {}); }
+
+// Small adapter so the app code talks to Firestore through doc()/collection() refs.
+const wrapDoc = ref => ({
+  id: ref.id, path: ref.path,
+  set: d => setDoc(ref, d), update: d => updateDoc(ref, d), delete: () => deleteDoc(ref),
+  onSnapshot: (next, err) => onSnapshot(ref, { includeMetadataChanges: true },
+    s => next({ id: s.id, exists: s.exists(), data: () => s.data(), metadata: { fromCache: s.metadata.fromCache } }), err),
+});
+window.hrDB = {
+  doc: p => wrapDoc(doc(fs, p)),
+  collection: p => {
+    const c = collection(fs, p);
+    return {
+      doc: id => wrapDoc(id ? doc(c, id) : doc(c)),
+      onSnapshot: (next, err) => onSnapshot(c, { includeMetadataChanges: true },
+        s => next({ docs: s.docs.map(d => ({ id: d.id, data: () => d.data() })), metadata: { fromCache: s.metadata.fromCache } }), err),
+    };
+  },
+};
+window.dispatchEvent(new Event("hrdb-ready"));
+</script>
+<script>
+(() => {
+  const MAX = 5, SLOTS = ["p1", "p2", "p3", "p4"];
+  const DAYN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const CHECK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5l3 3 7-7" stroke="var(--paper)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  // dates
+  const pad = n => String(n).padStart(2, "0");
+  const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const parse = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+  const mondayOf = d => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+  const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return ymd(d); };
+  const isoWeek = s => { const d = parse(s); d.setDate(d.getDate() + 3); const jan4 = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d - mondayOf(jan4)) / 864e5 - 3) / 7); };
+  const fmt = s => parse(s).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const thisWeek = () => ymd(mondayOf(new Date()));
+  const todayIdx = () => (new Date().getDay() + 6) % 7;
+
+  // state
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+  let week = thisWeek();
+  let me = store.get("hr-me"); if (!SLOTS.includes(me)) me = null;
+  let tab = store.get("hr-tab") === "crew" ? "crew" : "mine";
+  let players = {}, habits = [];
+  let db = null, canWrite = true, loaded = false, jumped = false;
+  let editing = false, adding = false, renaming = null, confirmDel = null;
+  let draft = { name: "", target: 3, kind: "days", limit: 7 };
+  const selDay = {};
+
+  const nameOf = s => (players[s] && players[s].name) || `Player ${SLOTS.indexOf(s) + 1}`;
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const $ = id => document.getElementById(id);
+  const done = h => (h.days || []).filter(Boolean).length;
+  const isLim = h => h.kind === "limit";
+  const total = h => (h.counts || []).reduce((a, b) => a + (+b || 0), 0);
+  // A weekly-limit habit is worth one point: kept while you stay at or under the max, lost once you go over.
+  const pts = h => isLim(h) ? { t: 1, hit: total(h) <= h.limit ? 1 : 0 } : { t: h.target, hit: Math.min(done(h), h.target) };
+  function selFor(h) { const maxDay = week === thisWeek() ? todayIdx() : 6; const s = selDay[h.id]; return s == null || s > maxDay ? maxDay : s; }
+  const listFor = (s, wk) => habits.filter(h => h.week === wk && h.player === s).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  function score(s, wk) {
+    const l = listFor(s, wk), target = l.reduce((a, h) => a + pts(h).t, 0), hit = l.reduce((a, h) => a + pts(h).hit, 0);
+    return { l, target, hit, pct: target ? Math.round(hit / target * 100) : 0 };
+  }
+  function wins() {
+    const w = Object.fromEntries(SLOTS.map(s => [s, 0]));
+    for (const wk of new Set(habits.map(h => h.week))) {
+      if (wk >= thisWeek()) continue;
+      const sc = SLOTS.map(s => ({ s, ...score(s, wk) })).filter(x => x.target);
+      const best = Math.max(0, ...sc.map(x => x.pct));
+      if (best > 0) sc.filter(x => x.pct === best).forEach(x => w[x.s]++);
+    }
+    return w;
+  }
+
+  // writes, one at a time per document
+  const queues = {};
+  function write(path, fn) {
+    const next = (queues[path] || Promise.resolve()).then(fn).catch(err => {
+      if (err && err.code === "quota_exceeded") notice("The notebook is full. Remove some old habits to make room.", true);
+      else notice("That change didn't save. Check your connection and try again.", true);
+      render();
+    });
+    queues[path] = next; return next;
+  }
+  function notice(msg, err) { const n = $("notice"); n.textContent = msg || ""; n.className = "notice" + (err ? " err" : ""); n.hidden = !msg; }
+  const editable = () => !!(db && canWrite);
+
+  // rendering pieces
+  function dotsHTML(h, canTap) {
+    const cur = thisWeek(), tIdx = week === cur ? todayIdx() : -1;
+    return `<span class="dots">${(h.days || Array(7).fill(false)).map((on, i) => {
+      const future = week > cur || (week === cur && i > tIdx);
+      const dis = !canTap || future;
+      return `<button class="dot${on ? " on" : ""}${i === tIdx ? " today" : ""}${future ? " future" : ""}" data-day="${h.id}" data-i="${i}" ${dis ? "disabled" : ""}
+        aria-pressed="${!!on}" aria-label="${esc(h.name)}, ${DAYN[i]}"><i>${DAYN[i][0]}</i></button>`;
+    }).join("")}</span>`;
+  }
+  function limitRow(h, mineRow) {
+    const cur = thisWeek(), canTap = mineRow && editable() && week <= cur;
+    const tIdx = week === cur ? todayIdx() : -1, sel = selFor(h);
+    const counts = h.counts || Array(7).fill(0), tot = total(h), over = tot > h.limit;
+    const count = `<span class="count num${over ? " over" : ""}">${over ? `${tot} · over ${h.limit}` : `<b>${tot}</b> of max ${h.limit}`}</span>`;
+    const nameRow = `<div class="nrow"><div class="n">${esc(h.name)}</div>${count}</div>`;
+    let run = 0;
+    const dots = `<span class="dots">${counts.map((c, i) => {
+      run += +c || 0;
+      const future = week > cur || (week === cur && i > tIdx), dis = !canTap || future;
+      return `<button class="dot${c > 0 ? " on" : ""}${canTap && i === sel ? " sel" : ""}${run > h.limit && c > 0 ? " overday" : ""}${future ? " future" : ""}" data-sel="${h.id}" data-i="${i}" ${dis ? "disabled" : ""}
+        aria-label="${DAYN[i]}: ${c}"><i>${c > 0 ? c : DAYN[i][0]}</i></button>`;
+    }).join("")}</span>`;
+    const dayName = sel === tIdx ? "Today" : DAYN[sel];
+    const line = canTap ? `<div class="lim-line num"><span>${dayName}: <b>${counts[sel] || 0}</b></span>
+      <button data-lim="${h.id}" data-d="-1" ${counts[sel] ? "" : "disabled"}>Undo one</button></div>` : "";
+    const edit = mineRow && editing && editable() ? `<div class="edit-row">
+        <span class="step num"><button data-lmax="${h.id}" data-d="-1" ${h.limit <= 1 ? "disabled" : ""} aria-label="Lower max">−</button>
+        Max ${h.limit} a week<button data-lmax="${h.id}" data-d="1" ${h.limit >= 99 ? "disabled" : ""} aria-label="Raise max">+</button></span>
+        <button class="rm" data-del="${h.id}">${confirmDel === h.id ? "Tap again to remove" : "Remove"}</button></div>` : "";
+    if (!canTap) return `<div class="h ro">${nameRow}<div class="meta">${dots}</div>${edit}</div>`;
+    return `<div class="h">
+      <button class="tick plus" data-lim="${h.id}" data-d="1" aria-label="Add one to ${dayName}">+1</button>
+      ${nameRow}<div class="meta">${dots}</div>${line}${edit}</div>`;
+  }
+  function habitRow(h, mineRow) {
+    if (isLim(h)) return limitRow(h, mineRow);
+    const d = done(h), hit = d >= h.target, cur = thisWeek();
+    const canTap = mineRow && editable();
+    const showTick = mineRow && week === cur;
+    const todayOn = showTick && h.days && h.days[todayIdx()];
+    const count = hit ? `<span class="count num goal">${d} of ${h.target} ✓</span>` : `<span class="count num"><b>${d}</b> of ${h.target}</span>`;
+    const nameRow = `<div class="nrow"><div class="n">${hit ? `<mark>${esc(h.name)}</mark>` : esc(h.name)}</div>${count}</div>`;
+    const edit = mineRow && editing && editable() ? `<div class="edit-row">
+        <span class="step num"><button data-freq="${h.id}" data-d="-1" ${h.target <= 1 ? "disabled" : ""} aria-label="Fewer days">−</button>
+        ${h.target}× a week<button data-freq="${h.id}" data-d="1" ${h.target >= 7 ? "disabled" : ""} aria-label="More days">+</button></span>
+        <button class="rm" data-del="${h.id}">${confirmDel === h.id ? "Tap again to remove" : "Remove"}</button></div>` : "";
+    if (!showTick) return `<div class="h ro">${nameRow}
+      <div class="meta">${dotsHTML(h, canTap)}</div>${edit}</div>`;
+    return `<div class="h">
+      <button class="tick${todayOn ? " on" : ""}" data-today="${h.id}" ${canTap ? "" : "disabled"} aria-pressed="${!!todayOn}" aria-label="${esc(h.name)} done today">${CHECK}</button>
+      ${nameRow}
+      <div class="meta">${dotsHTML(h, canTap)}</div>${edit}</div>`;
+  }
+  function standingsHTML() {
+    const sc = SLOTS.map(s => ({ s, ...score(s, week) })).sort((a, b) => b.pct - a.pct || b.hit - a.hit);
+    const w = wins(), past = week < thisWeek();
+    return `<div class="note"><div class="t">${past ? "Final standings" : "Standings"}<small>Week ${isoWeek(week)}</small></div>
+      ${sc.map((x, i) => {
+        const rank = x.target ? sc.findIndex(o => o.pct === x.pct && o.hit === x.hit) + 1 : "–";
+        return `<div class="st${x.s === me ? " me" : ""}"><span class="rk">${rank}</span>
+        <div class="nm"><div>${esc(nameOf(x.s))}</div><div class="bar"><i style="width:${x.pct}%"></i></div></div>
+        <div class="pc num">${x.pct}%<small>${w[x.s]} won</small></div></div>`;
+      }).join("")}</div>`;
+  }
+
+  function render() {
+    const cur = thisWeek(), past = week < cur, future = week > cur;
+    $("weekLabel").textContent = `Week ${isoWeek(week)} · ${fmt(week)} – ${fmt(addDays(week, 6))}`;
+    $("nextW").disabled = week >= addDays(cur, 7);
+
+    // headline + sub
+    const left = 6 - todayIdx();
+    let sub = past ? "This round is over." : future ? "Next round. Set up your habits ahead of time." :
+      left === 0 ? "Last day of the round." : `${left} day${left > 1 ? "s" : ""} left in this round.`;
+    if (week !== cur) sub += ` <button data-go="now">Back to this week</button>`;
+    else if (!habits.some(h => h.week === cur) && habits.some(h => h.week === addDays(cur, 7))) sub += ` <button data-go="next">See next round</button>`;
+    $("sub").innerHTML = sub;
+
+    if (!me) {
+      $("headline").textContent = "Who are you?";
+      $("who").className = "who big";
+      $("who").innerHTML = SLOTS.map(s => `<button data-me="${s}" aria-pressed="false">${esc(nameOf(s))}</button>`).join("");
+      $("main").innerHTML = `<div class="empty">Tap your name to open your habits.</div>` + standingsHTML();
+      return;
+    }
+    const mine = score(me, week);
+    $("headline").innerHTML = `${esc(nameOf(me))} ${past ? "finished at" : "is at"} <mark class="num">${mine.pct}%</mark>`;
+    $("who").className = "who";
+    $("who").innerHTML = SLOTS.map(s => `<button data-me="${s}" aria-pressed="${s === me}">${esc(nameOf(s))}</button>`).join("");
+
+    const tabs = `<div class="tabs" role="tablist">
+      <button role="tab" data-tab="mine" aria-selected="${tab === "mine"}">My habits</button>
+      <button role="tab" data-tab="crew" aria-selected="${tab === "crew"}">The crew</button>
+      <span class="spacer"></span>
+      ${tab === "mine" && mine.l.length && editable() && !past ? `<button class="edit" data-edit>${editing ? "Done" : "Edit"}</button>` : ""}</div>`;
+
+    let body = "";
+    if (tab === "mine") {
+      body += `<div class="list">${mine.l.map(h => habitRow(h, true)).join("")}</div>`;
+      if (!mine.l.length) body += `<div class="empty">${past ? "No habits this round." : "No habits yet for this round."}</div>`;
+      if (!past && editable()) {
+        const prev = listFor(me, addDays(week, -7));
+        if (!mine.l.length && prev.length) body += `<button class="copy" data-copy>Copy my ${prev.length} habit${prev.length > 1 ? "s" : ""} from last week</button>`;
+        if (mine.l.length < MAX) {
+          body += adding ? `<form class="addform" id="addform">
+              <div class="seg" role="group" aria-label="Habit type">
+                <button type="button" data-kind="days" aria-pressed="${draft.kind !== "limit"}">Do it X days a week</button>
+                <button type="button" data-kind="limit" aria-pressed="${draft.kind === "limit"}">Count and stay under</button></div>
+              <input type="text" id="newName" maxlength="60" placeholder="${draft.kind === "limit" ? "e.g. Drinks" : "e.g. Read 20 pages"}" value="${esc(draft.name)}" aria-label="Habit name" autocomplete="off">
+              ${draft.kind === "limit" ? `<div class="addrow"><span class="step num">Weekly max:
+                <button type="button" data-dlim="-1" ${draft.limit <= 1 ? "disabled" : ""} aria-label="Lower max">−</button>
+                <span>${draft.limit}</span>
+                <button type="button" data-dlim="1" ${draft.limit >= 99 ? "disabled" : ""} aria-label="Raise max">+</button></span></div>`
+              : `<div class="addrow"><span class="step num">How often:
+                <button type="button" data-dfreq="-1" ${draft.target <= 1 ? "disabled" : ""} aria-label="Fewer days">−</button>
+                <span id="dTarget">${draft.target}× a week</span>
+                <button type="button" data-dfreq="1" ${draft.target >= 7 ? "disabled" : ""} aria-label="More days">+</button></span></div>`}
+              <div class="addrow"><button class="btn" type="submit">Add habit</button><button type="button" class="link" data-cancel>Cancel</button></div>
+            </form>`
+            : `<button class="addbtn" data-add>+ Add a habit <span class="num" style="font-size:18px;color:var(--muted)">(${MAX - mine.l.length} left)</span></button>`;
+        } else body += `<div class="full">All 5 habit slots are used this round.</div>`;
+      }
+      body += standingsHTML();
+    } else {
+      body += standingsHTML();
+      body += SLOTS.map(s => {
+        const x = score(s, week);
+        const head = renaming === s
+          ? `<form class="rename" data-rename="${s}"><input id="rn-${s}" maxlength="24" value="${esc(nameOf(s))}" aria-label="Name"><button class="btn" type="submit">Save</button></form>`
+          : `<div class="friend-head"><h3>${esc(nameOf(s))}</h3><span class="pcs num">${x.pct}% · ${x.l.length} habit${x.l.length === 1 ? "" : "s"}</span>
+             ${editable() ? `<button class="rn" data-startrename="${s}">Rename</button>` : ""}</div>`;
+        return `<section class="friend">${head}
+          <div class="list">${x.l.map(h => habitRow(h, false)).join("") || `<div class="empty">${past ? "Sat this round out." : "No habits yet."}</div>`}</div></section>`;
+      }).join("");
+    }
+    $("main").innerHTML = tabs + body;
+  }
+
+  // actions
+  function setDay(id, i) {
+    const h = habits.find(x => x.id === id); if (!h || !editable()) return;
+    const days = [...(h.days || Array(7).fill(false))]; days[i] = !days[i]; h.days = days; render();
+    write("habits/" + id, () => db.collection("habits").doc(id).update({ days }));
+  }
+  document.addEventListener("click", e => {
+    const t = e.target.closest("button"); if (!t) return;
+    const go = w => { week = w; editing = false; adding = false; confirmDel = null; render(); };
+    if (t.id === "prevW") return go(addDays(week, -7));
+    if (t.id === "nextW") return go(addDays(week, 7));
+    if (t.dataset.go) return go(t.dataset.go === "now" ? thisWeek() : addDays(thisWeek(), 7));
+    if (t.dataset.me) { me = t.dataset.me; store.set("hr-me", me); editing = adding = false; return render(); }
+    if (t.dataset.tab) { tab = t.dataset.tab; store.set("hr-tab", tab); editing = adding = false; return render(); }
+    if ("edit" in t.dataset) { editing = !editing; confirmDel = null; return render(); }
+    if ("add" in t.dataset) { adding = true; render(); const i = $("newName"); i && i.focus(); return; }
+    if ("cancel" in t.dataset) { adding = false; draft = { name: "", target: 3 }; return render(); }
+    if (t.dataset.kind) { draft.kind = t.dataset.kind; draft.name = $("newName").value; render(); return; }
+    if (t.dataset.dlim) { draft.limit = Math.max(1, Math.min(99, draft.limit + +t.dataset.dlim)); draft.name = $("newName").value; render(); return; }
+    if (t.dataset.dfreq) { draft.target = Math.max(1, Math.min(7, draft.target + +t.dataset.dfreq)); draft.name = $("newName").value; render(); return; }
+    if (t.dataset.startrename) { renaming = t.dataset.startrename; render(); const i = $("rn-" + renaming); i && (i.focus(), i.select()); return; }
+    if (!editable()) return;
+    if (t.dataset.sel) { selDay[t.dataset.sel] = +t.dataset.i; return render(); }
+    if (t.dataset.lim) {
+      const h = habits.find(x => x.id === t.dataset.lim); if (!h) return;
+      const counts = [...(h.counts || Array(7).fill(0))], s = selFor(h);
+      counts[s] = Math.max(0, (+counts[s] || 0) + +t.dataset.d); h.counts = counts; render();
+      return write("habits/" + h.id, () => db.collection("habits").doc(h.id).update({ counts }));
+    }
+    if (t.dataset.lmax) {
+      const h = habits.find(x => x.id === t.dataset.lmax); if (!h) return;
+      const limit = Math.max(1, Math.min(99, h.limit + +t.dataset.d)); h.limit = limit; render();
+      return write("habits/" + h.id, () => db.collection("habits").doc(h.id).update({ limit }));
+    }
+    if (t.dataset.today) return setDay(t.dataset.today, todayIdx());
+    if (t.dataset.day) return setDay(t.dataset.day, +t.dataset.i);
+    if (t.dataset.freq) {
+      const h = habits.find(x => x.id === t.dataset.freq); if (!h) return;
+      const target = Math.max(1, Math.min(7, h.target + +t.dataset.d)); if (target === h.target) return;
+      h.target = target; render(); write("habits/" + h.id, () => db.collection("habits").doc(h.id).update({ target }));
+    }
+    if (t.dataset.del) {
+      if (confirmDel !== t.dataset.del) { confirmDel = t.dataset.del; return render(); }
+      const id = t.dataset.del; confirmDel = null; habits = habits.filter(h => h.id !== id); render();
+      write("habits/" + id, () => db.collection("habits").doc(id).delete());
+    }
+    if ("copy" in t.dataset) {
+      listFor(me, addDays(week, -7)).slice(0, MAX).forEach((h, k) => {
+        const ref = db.collection("habits").doc();
+        const data = { week, player: me, name: h.name, target: h.target, days: Array(7).fill(false), createdAt: Date.now() + k };
+        if (isLim(h)) Object.assign(data, { kind: "limit", limit: h.limit, counts: Array(7).fill(0) });
+        habits.push({ id: ref.id, ...data }); write(ref.path, () => ref.set(data));
+      });
+      render();
+    }
+  });
+  document.addEventListener("input", e => { if (e.target.id === "newName") draft.name = e.target.value; });
+  document.addEventListener("submit", e => {
+    e.preventDefault(); const f = e.target;
+    if (f.dataset.rename) {
+      const s = f.dataset.rename, v = $("rn-" + s).value.trim().slice(0, 24); renaming = null;
+      if (v && v !== nameOf(s) && editable()) { players = { ...players, [s]: { name: v } }; write("crew/players", () => db.doc("crew/players").set({ players })); }
+      return render();
+    }
+    if (f.id === "addform" && editable()) {
+      const name = $("newName").value.trim().slice(0, 60);
+      if (!name) return $("newName").focus();
+      if (listFor(me, week).length >= MAX) return;
+      const ref = db.collection("habits").doc();
+      const data = draft.kind === "limit"
+        ? { week, player: me, name, kind: "limit", limit: draft.limit, target: 1, counts: Array(7).fill(0), days: Array(7).fill(false), createdAt: Date.now() }
+        : { week, player: me, name, target: draft.target, days: Array(7).fill(false), createdAt: Date.now() };
+      habits.push({ id: ref.id, ...data }); draft = { ...draft, name: "" };
+      adding = listFor(me, week).length < MAX; render();
+      const i = $("newName"); i && i.focus();
+      write(ref.path, () => ref.set(data));
+    }
+  });
+
+  // boot
+  render();
+  function boot() {
+    db = window.hrDB;
+    const timer = setTimeout(() => { if (!loaded) notice("Still connecting. Your crew's habits will appear once the notebook loads."); }, 10000);
+    db.doc("crew/players").onSnapshot(snap => { const d = snap.exists ? snap.data() : null; players = d && d.players ? { ...d.players } : {}; render(); }, () => {});
+    db.collection("habits").onSnapshot(snap => {
+      habits = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (!snap.metadata.fromCache) {
+        if (!jumped) { jumped = true; const cur = thisWeek();
+          if (!habits.some(h => h.week === cur)) { const up = habits.map(h => h.week).filter(w => w > cur).sort()[0]; if (up) week = up; } }
+        loaded = true; clearTimeout(timer); notice("");
+      }
+      render();
+    }, () => { clearTimeout(timer); notice("The notebook stopped updating. Reload the page to reconnect.", true); });
+  }
+  setInterval(() => { if (thisWeek() !== lastWeekSeen) { lastWeekSeen = thisWeek(); week = lastWeekSeen; } render(); }, 60000);
+  let lastWeekSeen = thisWeek();
+  if (window.hrDB) boot(); else window.addEventListener("hrdb-ready", boot, { once: true });
+})();
+</script>
+
+</body>
+</html>
