@@ -173,7 +173,7 @@ mark { background: linear-gradient(transparent 55%, var(--hi) 55%); color: inher
   <div class="who" id="who" role="group" aria-label="Who are you?"></div>
   <div id="notice" class="notice" hidden></div>
   <div id="main"></div>
-  <p class="rules"><b>How it works.</b> Each round runs Monday to Sunday. Everyone picks up to 5 habits and how many days a week to do each. Tap the circle when you've done a habit today, or tap a day (M T W T F S S) to fill in another one. A “count and stay under” habit, like drinks, has a +1 button instead: tap it each time, and it scores a point as long as your week stays at or under its max. Your score is the share of your targets you hit, and the highest score on Sunday night wins the round.</p>
+  <p class="rules"><b>How it works.</b> Each round runs Monday to Sunday. Everyone picks up to 5 habits and how many days a week to do each. Tap the circle when you've done a habit today, or tap a day (M T W T F S S) to fill in another one. A “count and stay under” habit, like drinks, has a +1 button instead: tap it each time, and it earns its point on Sunday night if your week stayed at or under its max. Your score is the share of your targets you hit, and the highest score on Sunday night wins the round.</p>
 </div>
 
 <script type="module">
@@ -247,8 +247,8 @@ window.dispatchEvent(new Event("hrdb-ready"));
   const done = h => (h.days || []).filter(Boolean).length;
   const isLim = h => h.kind === "limit";
   const total = h => (h.counts || []).reduce((a, b) => a + (+b || 0), 0);
-  // A weekly-limit habit is worth one point: kept while you stay at or under the max, lost once you go over.
-  const pts = h => isLim(h) ? { t: 1, hit: total(h) <= h.limit ? 1 : 0 } : { t: h.target, hit: Math.min(done(h), h.target) };
+  // A weekly-limit habit is worth one point, earned only once the week is over and you stayed at or under the max.
+  const pts = h => isLim(h) ? { t: 1, hit: h.week < thisWeek() && total(h) <= h.limit ? 1 : 0 } : { t: h.target, hit: Math.min(done(h), h.target) };
   function selFor(h) { const maxDay = week === thisWeek() ? todayIdx() : 6; const s = selDay[h.id]; return s == null || s > maxDay ? maxDay : s; }
   const listFor = (s, wk) => habits.filter(h => h.week === wk && h.player === s).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   function score(s, wk) {
@@ -293,7 +293,7 @@ window.dispatchEvent(new Event("hrdb-ready"));
     const cur = thisWeek(), canTap = mineRow && editable() && week <= cur;
     const tIdx = week === cur ? todayIdx() : -1, sel = selFor(h);
     const counts = h.counts || Array(7).fill(0), tot = total(h), over = tot > h.limit;
-    const count = `<span class="count num${over ? " over" : ""}">${over ? `${tot} · over ${h.limit}` : `<b>${tot}</b> of max ${h.limit}`}</span>`;
+    const count = `<span class="count num${over ? " over" : ""}">${over ? `${tot} · over ${h.limit}` : h.week < thisWeek() ? `${tot} of max ${h.limit} ✓` : `<b>${tot}</b> of max ${h.limit}`}</span>`;
     const nameRow = `<div class="nrow"><div class="n">${esc(h.name)}</div>${count}</div>`;
     let run = 0;
     const dots = `<span class="dots">${counts.map((c, i) => {
