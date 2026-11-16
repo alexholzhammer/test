@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Anyone with the link can use the app; rules only keep the data in shape.
+    match /crew/players {
+      allow read: if true;
+      allow write: if request.resource.data.keys().hasOnly(['players'])
+        && request.resource.data.players is map;
+    }
+    match /habits/{id} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasOnly(['week', 'player', 'name', 'target', 'days', 'createdAt', 'kind', 'limit', 'counts'])
+        && request.resource.data.player in ['p1', 'p2', 'p3', 'p4']
+        && request.resource.data.week is string
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.target is int
+        && request.resource.data.target >= 1
+        && request.resource.data.target <= 7;
+      allow delete: if true;
+    }
+  }
+}
