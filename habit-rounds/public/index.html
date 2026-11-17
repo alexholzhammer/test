@@ -37,7 +37,7 @@ body { background-color: var(--paper); color: var(--ink); font-family: var(--bod
   padding-left: max(18px, env(safe-area-inset-left, 0px)); padding-right: max(18px, env(safe-area-inset-right, 0px));
   display: flex; flex-direction: column; gap: 14px; }
 button, input, select { font: inherit; color: inherit; }
-button { cursor: pointer; background: none; border: 0; padding: 0; }
+button { cursor: pointer; background: none; border: 0; padding: 0; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 2px solid var(--pen); outline-offset: 3px; border-radius: 4px; }
 .num { font-variant-numeric: tabular-nums; }
 .label { font-weight: 700; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
@@ -178,7 +178,7 @@ mark { background: linear-gradient(transparent 55%, var(--hi) 55%); color: inher
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { initializeFirestore, persistentLocalCache, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc }
+import { initializeFirestore, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const app = initializeApp({
@@ -189,9 +189,8 @@ const app = initializeApp({
   messagingSenderId: "391165130046",
   appId: "1:391165130046:web:572fa9bfb7c50889a2686f",
 });
-let fs;
-try { fs = initializeFirestore(app, { localCache: persistentLocalCache() }); }
-catch { fs = initializeFirestore(app, {}); }
+// No offline cache and plain long polling: the most reliable setup on iPhone browsers.
+const fs = initializeFirestore(app, { experimentalForceLongPolling: true });
 
 // Small adapter so the app code talks to Firestore through doc()/collection() refs.
 const wrapDoc = ref => ({
@@ -241,7 +240,8 @@ window.dispatchEvent(new Event("hrdb-ready"));
   let draft = { name: "", target: 3, kind: "days", limit: 7 };
   const selDay = {};
 
-  const nameOf = s => (players[s] && players[s].name) || `Player ${SLOTS.indexOf(s) + 1}`;
+  const DEFAULT_NAMES = { p1: "Alex", p2: "Ali", p3: "Keela", p4: "Heather" };
+  const nameOf = s => (players[s] && players[s].name) || DEFAULT_NAMES[s];
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const $ = id => document.getElementById(id);
   const done = h => (h.days || []).filter(Boolean).length;
@@ -276,6 +276,13 @@ window.dispatchEvent(new Event("hrdb-ready"));
     });
     queues[path] = next; return next;
   }
+  function showError(err) {
+    const msg = (err && (err.code || err.message)) || String(err);
+    notice(`Something went wrong (${msg}). Reload the page. If it keeps happening, send a screenshot of this message.`, true);
+    try { console.error(err); } catch {}
+  }
+  window.addEventListener("error", e => showError(e.error || e.message));
+  window.addEventListener("unhandledrejection", e => showError(e.reason));
   function notice(msg, err) { const n = $("notice"); n.textContent = msg || ""; n.className = "notice" + (err ? " err" : ""); n.hidden = !msg; }
   const editable = () => !!(db && canWrite);
 
@@ -345,7 +352,8 @@ window.dispatchEvent(new Event("hrdb-ready"));
       }).join("")}</div>`;
   }
 
-  function render() {
+  function render() { try { renderPage(); } catch (err) { showError(err); } }
+  function renderPage() {
     const cur = thisWeek(), past = week < cur, future = week > cur;
     $("weekLabel").textContent = `Week ${isoWeek(week)} · ${fmt(week)} – ${fmt(addDays(week, 6))}`;
     $("nextW").disabled = week >= addDays(cur, 7);
@@ -424,7 +432,8 @@ window.dispatchEvent(new Event("hrdb-ready"));
     const days = [...(h.days || Array(7).fill(false))]; days[i] = !days[i]; h.days = days; render();
     write("habits/" + id, () => db.collection("habits").doc(id).update({ days }));
   }
-  document.addEventListener("click", e => {
+  document.addEventListener("click", e => { try { handleClick(e); } catch (err) { showError(err); } });
+  function handleClick(e) {
     const t = e.target.closest("button"); if (!t) return;
     const go = w => { week = w; editing = false; adding = false; confirmDel = null; render(); };
     if (t.id === "prevW") return go(addDays(week, -7));
@@ -473,7 +482,7 @@ window.dispatchEvent(new Event("hrdb-ready"));
       });
       render();
     }
-  });
+  }
   document.addEventListener("input", e => { if (e.target.id === "newName") draft.name = e.target.value; });
   document.addEventListener("submit", e => {
     e.preventDefault(); const f = e.target;
@@ -501,8 +510,9 @@ window.dispatchEvent(new Event("hrdb-ready"));
   render();
   function boot() {
     db = window.hrDB;
-    const timer = setTimeout(() => { if (!loaded) notice("Still connecting. Your crew's habits will appear once the notebook loads."); }, 10000);
-    db.doc("crew/players").onSnapshot(snap => { const d = snap.exists ? snap.data() : null; players = d && d.players ? { ...d.players } : {}; render(); }, () => {});
+    const timer = setTimeout(() => { if (!loaded) notice("Still connecting. If nothing appears in a few seconds, reload the page."); }, 10000);
+    db.doc("crew/players").onSnapshot(snap => { const d = snap.exists ? snap.data() : null; if (d && d.players) { players = { ...d.players }; render(); } },
+      err => showError(err));
     db.collection("habits").onSnapshot(snap => {
       habits = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       if (!snap.metadata.fromCache) {
@@ -511,7 +521,7 @@ window.dispatchEvent(new Event("hrdb-ready"));
         loaded = true; clearTimeout(timer); notice("");
       }
       render();
-    }, () => { clearTimeout(timer); notice("The notebook stopped updating. Reload the page to reconnect.", true); });
+    }, err => { clearTimeout(timer); showError(err); });
   }
   setInterval(() => { if (thisWeek() !== lastWeekSeen) { lastWeekSeen = thisWeek(); week = lastWeekSeen; } render(); }, 60000);
   let lastWeekSeen = thisWeek();
