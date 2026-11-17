@@ -153,6 +153,7 @@ mark { background: linear-gradient(transparent 55%, var(--hi) 55%); color: inher
 .notice.err { border-color: var(--danger); color: var(--danger); }
 .rules { font-size: 13.5px; color: var(--muted); margin-top: 18px; }
 .rules b { color: var(--ink); }
+#dbg { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); z-index: 20; margin: 0; padding: 8px; font: 10.5px/1.35 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; background: var(--ink); color: var(--paper); border-radius: 6px; opacity: .92; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -196,7 +197,7 @@ const fs = initializeFirestore(app, { experimentalForceLongPolling: true });
 const wrapDoc = ref => ({
   id: ref.id, path: ref.path,
   set: d => setDoc(ref, d), update: d => updateDoc(ref, d), delete: () => deleteDoc(ref),
-  onSnapshot: (next, err) => onSnapshot(ref, { includeMetadataChanges: true },
+  onSnapshot: (next, err) => onSnapshot(ref,
     s => next({ id: s.id, exists: s.exists(), data: () => s.data(), metadata: { fromCache: s.metadata.fromCache } }), err),
 });
 window.hrDB = {
@@ -205,7 +206,7 @@ window.hrDB = {
     const c = collection(fs, p);
     return {
       doc: id => wrapDoc(id ? doc(c, id) : doc(c)),
-      onSnapshot: (next, err) => onSnapshot(c, { includeMetadataChanges: true },
+      onSnapshot: (next, err) => onSnapshot(c,
         s => next({ docs: s.docs.map(d => ({ id: d.id, data: () => d.data() })), metadata: { fromCache: s.metadata.fromCache } }), err),
     };
   },
@@ -276,8 +277,20 @@ window.dispatchEvent(new Event("hrdb-ready"));
     });
     queues[path] = next; return next;
   }
+  const debugOn = location.hash === "#debug";
+  const logLines = [];
+  let snaps = 0;
+  const tag = el => el ? (el.tagName || "?").toLowerCase() + (el.dataset && el.dataset.me ? "[" + el.dataset.me + "]" : "") : "none";
+  function log(m) { if (!debugOn) return; logLines.push(new Date().toTimeString().slice(0, 8) + " " + m); if (logLines.length > 12) logLines.shift(); dbg(); }
+  function dbg() {
+    if (!debugOn) return;
+    let el = document.getElementById("dbg");
+    if (!el) { el = document.createElement("pre"); el.id = "dbg"; document.body.appendChild(el); }
+    el.textContent = [navigator.userAgent, `renders ${renders} · snapshots ${snaps} · me ${me || "-"} · db ${db ? "yes" : "no"} · loaded ${loaded}`, ...logLines].join("\n");
+  }
   function showError(err) {
     const msg = (err && (err.code || err.message)) || String(err);
+    log("error " + msg);
     notice(`Something went wrong (${msg}). Reload the page. If it keeps happening, send a screenshot of this message.`, true);
     try { console.error(err); } catch {}
   }
@@ -352,7 +365,9 @@ window.dispatchEvent(new Event("hrdb-ready"));
       }).join("")}</div>`;
   }
 
-  function render() { try { renderPage(); } catch (err) { showError(err); } }
+  let renders = 0;
+  function setHTML(el, html) { if (el._html !== html) { el.innerHTML = html; el._html = html; } }
+  function render() { renders++; dbg(); try { renderPage(); } catch (err) { showError(err); } }
   function renderPage() {
     const cur = thisWeek(), past = week < cur, future = week > cur;
     $("weekLabel").textContent = `Week ${isoWeek(week)} · ${fmt(week)} – ${fmt(addDays(week, 6))}`;
@@ -364,19 +379,19 @@ window.dispatchEvent(new Event("hrdb-ready"));
       left === 0 ? "Last day of the round." : `${left} day${left > 1 ? "s" : ""} left in this round.`;
     if (week !== cur) sub += ` <button data-go="now">Back to this week</button>`;
     else if (!habits.some(h => h.week === cur) && habits.some(h => h.week === addDays(cur, 7))) sub += ` <button data-go="next">See next round</button>`;
-    $("sub").innerHTML = sub;
+    setHTML($("sub"), sub);
 
     if (!me) {
-      $("headline").textContent = "Who are you?";
+      setHTML($("headline"), "Who are you?");
       $("who").className = "who big";
-      $("who").innerHTML = SLOTS.map(s => `<button data-me="${s}" aria-pressed="false">${esc(nameOf(s))}</button>`).join("");
-      $("main").innerHTML = `<div class="empty">Tap your name to open your habits.</div>` + standingsHTML();
+      setHTML($("who"), SLOTS.map(s => `<button data-me="${s}" aria-pressed="false">${esc(nameOf(s))}</button>`).join(""));
+      setHTML($("main"), `<div class="empty">Tap your name to open your habits.</div>` + standingsHTML());
       return;
     }
     const mine = score(me, week);
-    $("headline").innerHTML = `${esc(nameOf(me))} ${past ? "finished at" : "is at"} <mark class="num">${mine.pct}%</mark>`;
+    setHTML($("headline"), `${esc(nameOf(me))} ${past ? "finished at" : "is at"} <mark class="num">${mine.pct}%</mark>`);
     $("who").className = "who";
-    $("who").innerHTML = SLOTS.map(s => `<button data-me="${s}" aria-pressed="${s === me}">${esc(nameOf(s))}</button>`).join("");
+    setHTML($("who"), SLOTS.map(s => `<button data-me="${s}" aria-pressed="${s === me}">${esc(nameOf(s))}</button>`).join(""));
 
     const tabs = `<div class="tabs" role="tablist">
       <button role="tab" data-tab="mine" aria-selected="${tab === "mine"}">My habits</button>
@@ -423,7 +438,7 @@ window.dispatchEvent(new Event("hrdb-ready"));
           <div class="list">${x.l.map(h => habitRow(h, false)).join("") || `<div class="empty">${past ? "Sat this round out." : "No habits yet."}</div>`}</div></section>`;
       }).join("");
     }
-    $("main").innerHTML = tabs + body;
+    setHTML($("main"), tabs + body);
   }
 
   // actions
@@ -432,7 +447,27 @@ window.dispatchEvent(new Event("hrdb-ready"));
     const days = [...(h.days || Array(7).fill(false))]; days[i] = !days[i]; h.days = days; render();
     write("habits/" + id, () => db.collection("habits").doc(id).update({ days }));
   }
-  document.addEventListener("click", e => { try { handleClick(e); } catch (err) { showError(err); } });
+  let lastClick = 0, touch = null;
+  function runClick(e) { try { handleClick(e); } catch (err) { showError(err); } }
+  document.addEventListener("click", e => { lastClick = Date.now(); log("click " + tag(e.target)); runClick(e); });
+  // iPhone Safari sometimes drops a tap when the page updates under the finger. If a touch on a
+  // button ends without a click arriving, run the same action ourselves.
+  document.addEventListener("touchstart", e => {
+    const t = e.touches[0]; touch = { x: t.clientX, y: t.clientY, at: Date.now(), btn: e.target.closest && e.target.closest("button") };
+    log("touchstart " + tag(e.target));
+  }, { passive: true });
+  document.addEventListener("touchend", e => {
+    const t = e.changedTouches[0], s0 = touch; touch = null;
+    if (!s0 || !s0.btn || Math.hypot(t.clientX - s0.x, t.clientY - s0.y) > 12 || Date.now() - s0.at > 800) return;
+    const ended = Date.now(), key = s0.btn.outerHTML;
+    setTimeout(() => {
+      if (lastClick >= ended) return;
+      const live = document.elementFromPoint(t.clientX, t.clientY);
+      const btn = live && live.closest("button");
+      log("no click arrived, using touch on " + tag(btn || s0.btn));
+      runClick({ target: btn && btn.outerHTML === key ? btn : s0.btn });
+    }, 350);
+  }, { passive: true });
   function handleClick(e) {
     const t = e.target.closest("button"); if (!t) return;
     const go = w => { week = w; editing = false; adding = false; confirmDel = null; render(); };
@@ -511,9 +546,9 @@ window.dispatchEvent(new Event("hrdb-ready"));
   function boot() {
     db = window.hrDB;
     const timer = setTimeout(() => { if (!loaded) notice("Still connecting. If nothing appears in a few seconds, reload the page."); }, 10000);
-    db.doc("crew/players").onSnapshot(snap => { const d = snap.exists ? snap.data() : null; if (d && d.players) { players = { ...d.players }; render(); } },
+    db.doc("crew/players").onSnapshot(snap => { snaps++; const d = snap.exists ? snap.data() : null; if (d && d.players) { players = { ...d.players }; render(); } },
       err => showError(err));
-    db.collection("habits").onSnapshot(snap => {
+    db.collection("habits").onSnapshot(snap => { snaps++;
       habits = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       if (!snap.metadata.fromCache) {
         if (!jumped) { jumped = true; const cur = thisWeek();
