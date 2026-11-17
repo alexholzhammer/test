@@ -215,7 +215,7 @@ window.dispatchEvent(new Event("hrdb-ready"));
 </script>
 <script>
 (() => {
-  const MAX = 5, SLOTS = ["p1", "p2", "p3", "p4"];
+  const MAX = 5, SLOTS = ["p1", "p2", "p3", "p4", "p5"];
   const DAYN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const CHECK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5l3 3 7-7" stroke="var(--paper)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -241,7 +241,7 @@ window.dispatchEvent(new Event("hrdb-ready"));
   let draft = { name: "", target: 3, kind: "days", limit: 7 };
   const selDay = {};
 
-  const DEFAULT_NAMES = { p1: "Alex", p2: "Ali", p3: "Keela", p4: "Heather" };
+  const DEFAULT_NAMES = { p1: "Alex", p2: "Ali", p3: "Keela", p4: "Heather", p5: "Sully" };
   const nameOf = s => (players[s] && players[s].name) || DEFAULT_NAMES[s];
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const $ = id => document.getElementById(id);
@@ -256,15 +256,14 @@ window.dispatchEvent(new Event("hrdb-ready"));
     const l = listFor(s, wk), target = l.reduce((a, h) => a + pts(h).t, 0), hit = l.reduce((a, h) => a + pts(h).hit, 0);
     return { l, target, hit, pct: target ? Math.round(hit / target * 100) : 0 };
   }
-  function wins() {
-    const w = Object.fromEntries(SLOTS.map(s => [s, 0]));
+  // Finished rounds each person took part in (had at least one habit).
+  function completedRounds() {
+    const c = Object.fromEntries(SLOTS.map(s => [s, 0]));
     for (const wk of new Set(habits.map(h => h.week))) {
       if (wk >= thisWeek()) continue;
-      const sc = SLOTS.map(s => ({ s, ...score(s, wk) })).filter(x => x.target);
-      const best = Math.max(0, ...sc.map(x => x.pct));
-      if (best > 0) sc.filter(x => x.pct === best).forEach(x => w[x.s]++);
+      SLOTS.forEach(s => { if (listFor(s, wk).length) c[s]++; });
     }
-    return w;
+    return c;
   }
 
   // writes, one at a time per document
@@ -355,13 +354,13 @@ window.dispatchEvent(new Event("hrdb-ready"));
   }
   function standingsHTML() {
     const sc = SLOTS.map(s => ({ s, ...score(s, week) })).sort((a, b) => b.pct - a.pct || b.hit - a.hit);
-    const w = wins(), past = week < thisWeek();
+    const w = completedRounds(), past = week < thisWeek();
     return `<div class="note"><div class="t">${past ? "Final standings" : "Standings"}<small>Week ${isoWeek(week)}</small></div>
       ${sc.map((x, i) => {
         const rank = x.target ? sc.findIndex(o => o.pct === x.pct && o.hit === x.hit) + 1 : "–";
         return `<div class="st${x.s === me ? " me" : ""}"><span class="rk">${rank}</span>
         <div class="nm"><div>${esc(nameOf(x.s))}</div><div class="bar"><i style="width:${x.pct}%"></i></div></div>
-        <div class="pc num">${x.pct}%<small>${w[x.s]} won</small></div></div>`;
+        <div class="pc num">${x.pct}%<small>${w[x.s]} completed</small></div></div>`;
       }).join("")}</div>`;
   }
 
