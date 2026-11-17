@@ -1,6 +1,6 @@
 # Habit Rounds
 
-A weekly habit challenge for four friends (Alex, Ali, Keela and Heather).
+A weekly habit challenge for five friends (Alex, Ali, Keela, Heather and Sully).
 Each round runs Monday to Sunday. Everyone picks up to 5 habits, either
 "do it X days a week" or "count and stay under a weekly max", and the
 highest share of targets hit wins the round.

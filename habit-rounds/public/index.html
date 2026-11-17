@@ -37,7 +37,7 @@ body { background-color: var(--paper); color: var(--ink); font-family: var(--bod
   padding-left: max(18px, env(safe-area-inset-left, 0px)); padding-right: max(18px, env(safe-area-inset-right, 0px));
   display: flex; flex-direction: column; gap: 14px; }
 button, input, select { font: inherit; color: inherit; }
-button { cursor: pointer; background: none; border: 0; padding: 0; }
+button { cursor: pointer; background: none; border: 0; padding: 0; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 2px solid var(--pen); outline-offset: 3px; border-radius: 4px; }
 .num { font-variant-numeric: tabular-nums; }
 .label { font-weight: 700; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
@@ -153,6 +153,7 @@ mark { background: linear-gradient(transparent 55%, var(--hi) 55%); color: inher
 .notice.err { border-color: var(--danger); color: var(--danger); }
 .rules { font-size: 13.5px; color: var(--muted); margin-top: 18px; }
 .rules b { color: var(--ink); }
+#dbg { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); z-index: 20; margin: 0; padding: 8px; font: 10.5px/1.35 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; background: var(--ink); color: var(--paper); border-radius: 6px; opacity: .92; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -178,7 +179,7 @@ mark { background: linear-gradient(transparent 55%, var(--hi) 55%); color: inher
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { initializeFirestore, persistentLocalCache, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc }
+import { initializeFirestore, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const app = initializeApp({
@@ -189,15 +190,14 @@ const app = initializeApp({
   messagingSenderId: "391165130046",
   appId: "1:391165130046:web:572fa9bfb7c50889a2686f",
 });
-let fs;
-try { fs = initializeFirestore(app, { localCache: persistentLocalCache() }); }
-catch { fs = initializeFirestore(app, {}); }
+// No offline cache and plain long polling: the most reliable setup on iPhone browsers.
+const fs = initializeFirestore(app, { experimentalForceLongPolling: true });
 
 // Small adapter so the app code talks to Firestore through doc()/collection() refs.
 const wrapDoc = ref => ({
   id: ref.id, path: ref.path,
   set: d => setDoc(ref, d), update: d => updateDoc(ref, d), delete: () => deleteDoc(ref),
-  onSnapshot: (next, err) => onSnapshot(ref, { includeMetadataChanges: true },
+  onSnapshot: (next, err) => onSnapshot(ref,
     s => next({ id: s.id, exists: s.exists(), data: () => s.data(), metadata: { fromCache: s.metadata.fromCache } }), err),
 });
 window.hrDB = {
@@ -206,7 +206,7 @@ window.hrDB = {
     const c = collection(fs, p);
     return {
       doc: id => wrapDoc(id ? doc(c, id) : doc(c)),
-      onSnapshot: (next, err) => onSnapshot(c, { includeMetadataChanges: true },
+      onSnapshot: (next, err) => onSnapshot(c,
         s => next({ docs: s.docs.map(d => ({ id: d.id, data: () => d.data() })), metadata: { fromCache: s.metadata.fromCache } }), err),
     };
   },
@@ -215,7 +215,7 @@ window.dispatchEvent(new Event("hrdb-ready"));
 </script>
 <script>
 (() => {
-  const MAX = 5, SLOTS = ["p1", "p2", "p3", "p4"];
+  const MAX = 5, SLOTS = ["p1", "p2", "p3", "p4", "p5"];
   const DAYN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const CHECK = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5l3 3 7-7" stroke="var(--paper)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -241,7 +241,8 @@ window.dispatchEvent(new Event("hrdb-ready"));
   let draft = { name: "", target: 3, kind: "days", limit: 7 };
   const selDay = {};
 
-  const nameOf = s => (players[s] && players[s].name) || `Player ${SLOTS.indexOf(s) + 1}`;
+  const DEFAULT_NAMES = { p1: "Alex", p2: "Ali", p3: "Keela", p4: "Heather", p5: "Sully" };
+  const nameOf = s => (players[s] && players[s].name) || DEFAULT_NAMES[s];
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const $ = id => document.getElementById(id);
   const done = h => (h.days || []).filter(Boolean).length;
@@ -255,15 +256,14 @@ window.dispatchEvent(new Event("hrdb-ready"));
     const l = listFor(s, wk), target = l.reduce((a, h) => a + pts(h).t, 0), hit = l.reduce((a, h) => a + pts(h).hit, 0);
     return { l, target, hit, pct: target ? Math.round(hit / target * 100) : 0 };
   }
-  function wins() {
-    const w = Object.fromEntries(SLOTS.map(s => [s, 0]));
+  // Finished rounds each person took part in (had at least one habit).
+  function completedRounds() {
+    const c = Object.fromEntries(SLOTS.map(s => [s, 0]));
     for (const wk of new Set(habits.map(h => h.week))) {
       if (wk >= thisWeek()) continue;
-      const sc = SLOTS.map(s => ({ s, ...score(s, wk) })).filter(x => x.target);
-      const best = Math.max(0, ...sc.map(x => x.pct));
-      if (best > 0) sc.filter(x => x.pct === best).forEach(x => w[x.s]++);
+      SLOTS.forEach(s => { if (listFor(s, wk).length) c[s]++; });
     }
-    return w;
+    return c;
   }
 
   // writes, one at a time per document
@@ -276,6 +276,25 @@ window.dispatchEvent(new Event("hrdb-ready"));
     });
     queues[path] = next; return next;
   }
+  const debugOn = location.hash === "#debug";
+  const logLines = [];
+  let snaps = 0;
+  const tag = el => el ? (el.tagName || "?").toLowerCase() + (el.dataset && el.dataset.me ? "[" + el.dataset.me + "]" : "") : "none";
+  function log(m) { if (!debugOn) return; logLines.push(new Date().toTimeString().slice(0, 8) + " " + m); if (logLines.length > 12) logLines.shift(); dbg(); }
+  function dbg() {
+    if (!debugOn) return;
+    let el = document.getElementById("dbg");
+    if (!el) { el = document.createElement("pre"); el.id = "dbg"; document.body.appendChild(el); }
+    el.textContent = [navigator.userAgent, `renders ${renders} · snapshots ${snaps} · me ${me || "-"} · db ${db ? "yes" : "no"} · loaded ${loaded}`, ...logLines].join("\n");
+  }
+  function showError(err) {
+    const msg = (err && (err.code || err.message)) || String(err);
+    log("error " + msg);
+    notice(`Something went wrong (${msg}). Reload the page. If it keeps happening, send a screenshot of this message.`, true);
+    try { console.error(err); } catch {}
+  }
+  window.addEventListener("error", e => showError(e.error || e.message));
+  window.addEventListener("unhandledrejection", e => showError(e.reason));
   function notice(msg, err) { const n = $("notice"); n.textContent = msg || ""; n.className = "notice" + (err ? " err" : ""); n.hidden = !msg; }
   const editable = () => !!(db && canWrite);
 
@@ -335,17 +354,20 @@ window.dispatchEvent(new Event("hrdb-ready"));
   }
   function standingsHTML() {
     const sc = SLOTS.map(s => ({ s, ...score(s, week) })).sort((a, b) => b.pct - a.pct || b.hit - a.hit);
-    const w = wins(), past = week < thisWeek();
+    const w = completedRounds(), past = week < thisWeek();
     return `<div class="note"><div class="t">${past ? "Final standings" : "Standings"}<small>Week ${isoWeek(week)}</small></div>
       ${sc.map((x, i) => {
         const rank = x.target ? sc.findIndex(o => o.pct === x.pct && o.hit === x.hit) + 1 : "–";
         return `<div class="st${x.s === me ? " me" : ""}"><span class="rk">${rank}</span>
         <div class="nm"><div>${esc(nameOf(x.s))}</div><div class="bar"><i style="width:${x.pct}%"></i></div></div>
-        <div class="pc num">${x.pct}%<small>${w[x.s]} won</small></div></div>`;
+        <div class="pc num">${x.pct}%<small>${w[x.s]} completed</small></div></div>`;
       }).join("")}</div>`;
   }
 
-  function render() {
+  let renders = 0;
+  function setHTML(el, html) { if (el._html !== html) { el.innerHTML = html; el._html = html; } }
+  function render() { renders++; dbg(); try { renderPage(); } catch (err) { showError(err); } }
+  function renderPage() {
     const cur = thisWeek(), past = week < cur, future = week > cur;
     $("weekLabel").textContent = `Week ${isoWeek(week)} · ${fmt(week)} – ${fmt(addDays(week, 6))}`;
     $("nextW").disabled = week >= addDays(cur, 7);
@@ -356,19 +378,19 @@ window.dispatchEvent(new Event("hrdb-ready"));
       left === 0 ? "Last day of the round." : `${left} day${left > 1 ? "s" : ""} left in this round.`;
     if (week !== cur) sub += ` <button data-go="now">Back to this week</button>`;
     else if (!habits.some(h => h.week === cur) && habits.some(h => h.week === addDays(cur, 7))) sub += ` <button data-go="next">See next round</button>`;
-    $("sub").innerHTML = sub;
+    setHTML($("sub"), sub);
 
     if (!me) {
-      $("headline").textContent = "Who are you?";
+      setHTML($("headline"), "Who are you?");
       $("who").className = "who big";
-      $("who").innerHTML = SLOTS.map(s => `<button data-me="${s}" aria-pressed="false">${esc(nameOf(s))}</button>`).join("");
-      $("main").innerHTML = `<div class="empty">Tap your name to open your habits.</div>` + standingsHTML();
+      setHTML($("who"), SLOTS.map(s => `<button data-me="${s}" aria-pressed="false">${esc(nameOf(s))}</button>`).join(""));
+      setHTML($("main"), `<div class="empty">Tap your name to open your habits.</div>` + standingsHTML());
       return;
     }
     const mine = score(me, week);
-    $("headline").innerHTML = `${esc(nameOf(me))} ${past ? "finished at" : "is at"} <mark class="num">${mine.pct}%</mark>`;
+    setHTML($("headline"), `${esc(nameOf(me))} ${past ? "finished at" : "is at"} <mark class="num">${mine.pct}%</mark>`);
     $("who").className = "who";
-    $("who").innerHTML = SLOTS.map(s => `<button data-me="${s}" aria-pressed="${s === me}">${esc(nameOf(s))}</button>`).join("");
+    setHTML($("who"), SLOTS.map(s => `<button data-me="${s}" aria-pressed="${s === me}">${esc(nameOf(s))}</button>`).join(""));
 
     const tabs = `<div class="tabs" role="tablist">
       <button role="tab" data-tab="mine" aria-selected="${tab === "mine"}">My habits</button>
@@ -415,7 +437,7 @@ window.dispatchEvent(new Event("hrdb-ready"));
           <div class="list">${x.l.map(h => habitRow(h, false)).join("") || `<div class="empty">${past ? "Sat this round out." : "No habits yet."}</div>`}</div></section>`;
       }).join("");
     }
-    $("main").innerHTML = tabs + body;
+    setHTML($("main"), tabs + body);
   }
 
   // actions
@@ -424,7 +446,28 @@ window.dispatchEvent(new Event("hrdb-ready"));
     const days = [...(h.days || Array(7).fill(false))]; days[i] = !days[i]; h.days = days; render();
     write("habits/" + id, () => db.collection("habits").doc(id).update({ days }));
   }
-  document.addEventListener("click", e => {
+  let lastClick = 0, touch = null;
+  function runClick(e) { try { handleClick(e); } catch (err) { showError(err); } }
+  document.addEventListener("click", e => { lastClick = Date.now(); log("click " + tag(e.target)); runClick(e); });
+  // iPhone Safari sometimes drops a tap when the page updates under the finger. If a touch on a
+  // button ends without a click arriving, run the same action ourselves.
+  document.addEventListener("touchstart", e => {
+    const t = e.touches[0]; touch = { x: t.clientX, y: t.clientY, at: Date.now(), btn: e.target.closest && e.target.closest("button") };
+    log("touchstart " + tag(e.target));
+  }, { passive: true });
+  document.addEventListener("touchend", e => {
+    const t = e.changedTouches[0], s0 = touch; touch = null;
+    if (!s0 || !s0.btn || Math.hypot(t.clientX - s0.x, t.clientY - s0.y) > 12 || Date.now() - s0.at > 800) return;
+    const ended = Date.now(), key = s0.btn.outerHTML;
+    setTimeout(() => {
+      if (lastClick >= ended) return;
+      const live = document.elementFromPoint(t.clientX, t.clientY);
+      const btn = live && live.closest("button");
+      log("no click arrived, using touch on " + tag(btn || s0.btn));
+      runClick({ target: btn && btn.outerHTML === key ? btn : s0.btn });
+    }, 350);
+  }, { passive: true });
+  function handleClick(e) {
     const t = e.target.closest("button"); if (!t) return;
     const go = w => { week = w; editing = false; adding = false; confirmDel = null; render(); };
     if (t.id === "prevW") return go(addDays(week, -7));
@@ -473,7 +516,7 @@ window.dispatchEvent(new Event("hrdb-ready"));
       });
       render();
     }
-  });
+  }
   document.addEventListener("input", e => { if (e.target.id === "newName") draft.name = e.target.value; });
   document.addEventListener("submit", e => {
     e.preventDefault(); const f = e.target;
@@ -501,9 +544,10 @@ window.dispatchEvent(new Event("hrdb-ready"));
   render();
   function boot() {
     db = window.hrDB;
-    const timer = setTimeout(() => { if (!loaded) notice("Still connecting. Your crew's habits will appear once the notebook loads."); }, 10000);
-    db.doc("crew/players").onSnapshot(snap => { const d = snap.exists ? snap.data() : null; players = d && d.players ? { ...d.players } : {}; render(); }, () => {});
-    db.collection("habits").onSnapshot(snap => {
+    const timer = setTimeout(() => { if (!loaded) notice("Still connecting. If nothing appears in a few seconds, reload the page."); }, 10000);
+    db.doc("crew/players").onSnapshot(snap => { snaps++; const d = snap.exists ? snap.data() : null; if (d && d.players) { players = { ...d.players }; render(); } },
+      err => showError(err));
+    db.collection("habits").onSnapshot(snap => { snaps++;
       habits = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       if (!snap.metadata.fromCache) {
         if (!jumped) { jumped = true; const cur = thisWeek();
@@ -511,7 +555,7 @@ window.dispatchEvent(new Event("hrdb-ready"));
         loaded = true; clearTimeout(timer); notice("");
       }
       render();
-    }, () => { clearTimeout(timer); notice("The notebook stopped updating. Reload the page to reconnect.", true); });
+    }, err => { clearTimeout(timer); showError(err); });
   }
   setInterval(() => { if (thisWeek() !== lastWeekSeen) { lastWeekSeen = thisWeek(); week = lastWeekSeen; } render(); }, 60000);
   let lastWeekSeen = thisWeek();
